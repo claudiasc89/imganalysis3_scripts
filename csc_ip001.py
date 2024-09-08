@@ -74,7 +74,7 @@ from tifffile import imsave, imread
 # User-configurable parameters
 # ============================
 # Define the folder path containing the images
-folder= '/Users/claudiasalatcanela/Desktop/z_proj_img/timelapse'
+folder= '/Users/claudiasalatcanela/Desktop/z_proj_img'
 
 # Define the type of projection to be applied: 'mean', 'max', or 'best'
 proj_type='mean'
@@ -89,7 +89,7 @@ ch_type= 'F' #currently it only works for fluorescent images
 ch_name= ['WL508'] # it can be a list to create projections of several fluorescent channels at a time
 
 # Define the dimensions arrangement
-dimensions_type= ('t','z','x','y') #t for time, z for z_stack, x and y dimensions
+dimensions_type= ('z','x','y') #t for time, z for z_stack, x and y dimensions
 
 
 # End of user-configurable parameters
@@ -237,7 +237,7 @@ def projection_3D (img, dimensions_indices):
     log_file = os.path.join(folder,'projections', f"{output_name}_{proj_type}_log.txt")
     
     if proj_type == 'best':
-        img_proj = img[maxsd,:,:]
+        img_proj = img.take(maxsd, axis=dimensions_indices['z'])
         
         # Log the z-stack used
         with open(log_file, 'a') as f:
