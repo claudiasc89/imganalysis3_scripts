@@ -6,6 +6,6 @@ The scripts will be dividied in two main sections: **Image processing** or **Ima
 
 # Index
 ## Image Processing
-- **py_csc_ip001**: This scripts selects the best focused plane across z-stack images and performs mean, max projections.
+- **csc_ip001.py**: This scripts selects the best focused plane across z-stack images and performs mean, max projections.
 
 ## Image Analysis
