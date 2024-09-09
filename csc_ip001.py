@@ -69,12 +69,14 @@ import nd2
 import os
 import numpy as np
 from tifffile import imsave, imread
+import cv2
+
 
 
 # User-configurable parameters
 # ============================
 # Define the folder path containing the images
-folder= '/Users/claudiasalatcanela/Desktop/z_proj_img'
+folder= '/Users/csalatca/Desktop/temporary_microscopyfiles/img_test_zproj/BF'
 
 # Define the type of projection to be applied: 'mean', 'max', or 'best'
 proj_type='mean'
@@ -83,10 +85,10 @@ proj_type='mean'
 stack_step= 1 # it means it will get -n, best, +n 
 
 # Define the channel type: BF for brightfield F for Fluoresencent images 
-ch_type= 'F' #currently it only works for fluorescent images
+ch_type= 'BF' #currently it only works for fluorescent images
 
 # Define the channel name
-ch_name= ['WL508'] # it can be a list to create projections of several fluorescent channels at a time
+ch_name= ['BF'] # it can be a list to create projections of several fluorescent channels at a time
 
 # Define the dimensions arrangement
 dimensions_type= ('z','x','y') #t for time, z for z_stack, x and y dimensions
@@ -150,12 +152,12 @@ def focused_z(image, dimensions_indices):
         A tuple containing:
         - sd (numpy.ndarray): An array of standard deviation values for each z-slice, with the same length as the number 
           of slices along the z-axis.
-        - maxsd (int): The index of the z-slice with the highest standard deviation, indicating the most focused slice.
+        - best_focused (int): The index of the z-slice with the highest standard deviation, indicating the most focused slice.
     '''
     axis=(dimensions_indices['x'],dimensions_indices['y'])
     sd=image.std(axis=axis) #by axis we are telling it to flatten the first and second dimensions, so Y and X and get the sd of all the values
-    maxsd=sd.argmax() 
-    return sd, maxsd
+    best_focused=sd.argmax() 
+    return sd, best_focused
 '''
 def focused_z_v2(image):
     'This function determines the most focused z slice within a multi-stack brightfield image'
@@ -220,7 +222,7 @@ def projection_3D (img, dimensions_indices):
         The function saves the projected image and logs the projection details in a text file.
     '''    
     global proj_type
-    global maxsd
+    global best_focused
     global filename
     global stack_step
     global dimensions
@@ -237,11 +239,11 @@ def projection_3D (img, dimensions_indices):
     log_file = os.path.join(folder,'projections', f"{output_name}_{proj_type}_log.txt")
     
     if proj_type == 'best':
-        img_proj = img.take(maxsd, axis=dimensions_indices['z'])
+        img_proj = img.take(best_focused, axis=dimensions_indices['z'])
         
         # Log the z-stack used
         with open(log_file, 'a') as f:
-            log_message = f"Image: {filename}, z-stack used: {maxsd}\n"
+            log_message = f"Image: {filename}, z-stack used: {best_focused}\n"
             f.write(log_message)
     
     elif proj_type == 'mean' or proj_type == 'max':
@@ -254,8 +256,8 @@ def projection_3D (img, dimensions_indices):
         
         else:
             # To calculate the first and last stack included in the projection according to the best focused
-            start_z = maxsd-stack_step
-            stop_z = maxsd+stack_step+1 # add 1 to make sure that the stop_z is included
+            start_z = best_focused-stack_step
+            stop_z = best_focused+stack_step+1 # add 1 to make sure that the stop_z is included
             
             # it might be than the best focused is not central so there are not enough z-stacks to accomodate our will
             # to check if best focused is closer to the first stack
@@ -368,6 +370,42 @@ def redefine_dimensions(dimension_to_remove):
     
     return temp_dimensions_map, temp_dimensions_indices
 
+def laplacian_var (image, dimensions_indices):
+    
+    # Get the axis that contains the z parameter
+    axis = dimensions_indices['z']
+    
+    # Get the number of z-stacks
+    z_slices = dimensions_map['z']
+    
+    # Initialize a NumPy array to store variance results
+    var_array = np.zeros(z_slices, dtype=np.float64)
+    
+    for stack in range(z_slices):
+        
+        # Take a 2D image
+        img_z = image.take(stack, axis= axis)
+               
+        # Apply Laplacian operator in the required depth
+        laplacian = cv2.Laplacian(img_z, cv2.CV_64F)
+
+        # Calculate the variance of the Laplacian
+        variance = laplacian.var()
+        
+        # Store the result in the NumPy array
+        var_array[stack] = variance
+    
+    # The bet focused slice will be the one with the maximum variance value
+    best_focused = var_array.argmax()
+    
+    return var_array, best_focused
+        
+        
+    
+    
+    
+    
+    
 
 # End of locally-defined functions
 # ===================================   
@@ -394,14 +432,37 @@ for file in sorted(os.listdir(folder)):
         # Get the image dimensions in the appropiate order
         dimensions_indices, dimensions_map= get_dimensions(img)
         
-        # Check that the image contains z-stacks
+        # Check that the image contains z-stacks 
         if "z" in dimensions_map:
         
-            # For iamges containing a single time-point
+            # For images containing a single time-point
             if "t" not in dimensions_map:
                 
-                sd, maxsd = focused_z(img, dimensions_indices) # Get an array with the sd per slice and the position of the maximal sd
+                # Find the best focused slice for fluorescent images
+                if 'F' == ch_type:
+                    
+                    # For fluorescent images we use the SD to find the best focused slice
+                    sd, best_focused = focused_z(img, dimensions_indices) # Get an array with the sd per slice and the position of the maximal sd
                 
+                # Find the best focused slice for brightfield images
+                elif 'BF' == ch_type:
+                    
+                    # Get the Laplacian variance and the best focused slice
+                    var_array, best_focused = laplacian_var(img, dimensions_indices)
+                    print (f'For image {filename} the best focused plane is  {best_focused}')
+                
+                else:
+                    raise ValueError('Channel type does not correspond to any of the possible options')
+                    
+                # run on several images and check efficiency in detecting the best focused slice   
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+                    
                 # Perform the projection and save
                 img_proj= projection_3D(img, dimensions_indices)
                 
@@ -425,7 +486,7 @@ for file in sorted(os.listdir(folder)):
                     s_dimensions_map, s_dimensions_indices =redefine_dimensions('t')
                     
                     # Obtain the sd info per each stack and the index of the best one
-                    sd, maxsd = focused_z(img_tslice, s_dimensions_indices) # Get an array with the sd per slice and the position of the maximal sd
+                    sd, best_focused = focused_z(img_tslice, s_dimensions_indices) # Get an array with the sd per slice and the position of the maximal sd
                     
                     # Perform the projection and return the projected image
                     img_proj_tp = projection_3D(img_tslice, s_dimensions_indices)
@@ -439,7 +500,8 @@ for file in sorted(os.listdir(folder)):
                 
                 # Save the projected image
                 img_path = os.path.join(folder,'projections', f"{basename}_{proj_type}.tif")
-                imsave(img_path,img_stack)        
+                imsave(img_path,img_stack)    
+    
         
         else:
             raise ValueError(f"Unsupported image dimensions. {filename} does not contain z-stacks")
