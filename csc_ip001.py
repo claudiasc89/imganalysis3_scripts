@@ -76,7 +76,7 @@ import cv2
 # User-configurable parameters
 # ============================
 # Define the folder path containing the images
-folder= '/Users/csalatca/Desktop/temporary_microscopyfiles/img_test_zproj/BF'
+folder= '/Users/claudiasalatcanela/Desktop/best_focus_comp'
 
 # Define the type of projection to be applied: 'mean', 'max', or 'best'
 proj_type='mean'
@@ -85,10 +85,10 @@ proj_type='mean'
 stack_step= 1 # it means it will get -n, best, +n 
 
 # Define the channel type: BF for brightfield F for Fluoresencent images 
-ch_type= 'BF' #currently it only works for fluorescent images
+ch_type= 'F' #currently it only works for fluorescent images
 
 # Define the channel name
-ch_name= ['BF'] # it can be a list to create projections of several fluorescent channels at a time
+ch_name= ['WL508'] # it can be a list to create projections of several fluorescent channels at a time
 
 # Define the dimensions arrangement
 dimensions_type= ('z','x','y') #t for time, z for z_stack, x and y dimensions
@@ -387,7 +387,7 @@ def laplacian_var (image, dimensions_indices):
         img_z = image.take(stack, axis= axis)
                
         # Apply Laplacian operator in the required depth
-        laplacian = cv2.Laplacian(img_z, cv2.CV_64F)
+        laplacian = cv2.Laplacian(img_z, cv2.CV_64F, ksize=21) #max kernel sixe of 31
 
         # Calculate the variance of the Laplacian
         variance = laplacian.var()
@@ -400,10 +400,35 @@ def laplacian_var (image, dimensions_indices):
     
     return var_array, best_focused
         
+
+def tenengrad(image, dimensions_indices):
+    
+    # Get the axis that contains the z parameter
+    axis = dimensions_indices['z']
+    
+    # Get the number of z-stacks
+    z_slices = dimensions_map['z']
+    
+    # Initialize a NumPy array to store variance results
+    ten_array = np.zeros(z_slices, dtype=np.float64)
+    
+    for stack in range(z_slices):
         
+        # Take a 2D image
+        img_z = image.take(stack, axis= axis)
+        
+        # Tenengrad algorithm for focus detection
+        sobel_x = cv2.Sobel(img_z, cv2.CV_64F, 1, 0, ksize=3)
+        sobel_y = cv2.Sobel(img_z, cv2.CV_64F, 0, 1, ksize=3)
+        gradient_magnitude = np.sqrt(sobel_x ** 2 + sobel_y ** 2)
     
+        #Store the result 
+        ten_array[stack]= np.sum(gradient_magnitude)
     
+    # Find the index of the best-focused slice (with the maximum value)
+    best_focused_slice = np.argmax(ten_array)
     
+    return ten_array, best_focused_slice
     
     
 
@@ -444,6 +469,15 @@ for file in sorted(os.listdir(folder)):
                     # For fluorescent images we use the SD to find the best focused slice
                     sd, best_focused = focused_z(img, dimensions_indices) # Get an array with the sd per slice and the position of the maximal sd
                 
+                    # Obtain best focudes z using laplacian variance
+                    var_array, best_focused_lp = laplacian_var(img, dimensions_indices)
+                    
+                    # Obtain best foucsed z using tenengram
+                    ten_array, best_focused_ten = tenengrad(img, dimensions_indices)
+                    
+                    print (f'For image `{filename} best_f SD: ~{best_focused} ; best_f LP: {best_focused_lp}; best_f TEN: {best_focused_ten}')
+                    
+                    
                 # Find the best focused slice for brightfield images
                 elif 'BF' == ch_type:
                     
